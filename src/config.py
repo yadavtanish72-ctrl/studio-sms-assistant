@@ -33,6 +33,13 @@ def require(name):
     return value
 
 
+def openrouter_key(override=None):
+    """The OpenRouter key to bill: `override` (a web visitor's own) when given, else ours.
+    Checked with `is None`, not truthiness, so an empty visitor key fails instead of quietly
+    spending OPENROUTER_API_KEY."""
+    return override if override is not None else require("OPENROUTER_API_KEY")
+
+
 # ── Models ───────────────────────────────────────────────────────────────────────────
 # All three run through OpenRouter, so one API key covers embeddings, generation and
 # judging. EMBED_MODEL must be identical at ingest time and at query time, or the question
@@ -96,5 +103,10 @@ HISTORY_HOURS = float(os.environ.get("HISTORY_HOURS", 24))      # and how far ba
 # LLM call per message that has history. On by measurement: retrieval 10/12 -> 12/12 (§14a).
 USE_QUERY_REWRITE = os.environ.get("USE_QUERY_REWRITE", "true").lower() not in ("false", "0", "no")
 REWRITE_MODEL = os.environ.get("REWRITE_MODEL", "z-ai/glm-5.3-flash")
+
+# ── Web chat (src/ui.py) ─────────────────────────────────────────────────────────────
+# Off by default, and it needs `pip install -r requirements-ui.txt`. When on, `rag serve`
+# starts the web chat, where each visitor pays with their own OpenRouter key.
+ENABLE_UI = os.environ.get("ENABLE_UI", "false").lower() in ("true", "1", "yes")
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"

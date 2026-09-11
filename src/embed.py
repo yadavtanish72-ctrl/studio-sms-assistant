@@ -9,10 +9,11 @@ from . import config
 BATCH = 64  # the whole corpus is 26 chunks, so this is one request in practice
 
 
-def embed(texts):
-    """Embed a list of strings, returning vectors in the same order."""
+def embed(texts, api_key=None):
+    """Embed a list of strings, returning vectors in the same order. `api_key` bills a web
+    visitor's key instead of ours."""
     vectors = []
-    headers = {"Authorization": f"Bearer {config.require('OPENROUTER_API_KEY')}"}
+    headers = {"Authorization": f"Bearer {config.openrouter_key(api_key)}"}
     with httpx.Client(timeout=120) as client:
         for start in range(0, len(texts), BATCH):
             batch = texts[start:start + BATCH]
@@ -35,6 +36,6 @@ def embed(texts):
     return vectors
 
 
-def embed_one(text):
+def embed_one(text, api_key=None):
     """Query-time convenience: one question -> one vector."""
-    return embed([text])[0]
+    return embed([text], api_key=api_key)[0]

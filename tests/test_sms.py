@@ -207,8 +207,9 @@ flask.Flask.run = lambda self, **kw: captured.update(kw)
 sms.store.open_index = lambda pc: "fake-index"
 sms.store.client = lambda: None
 os.environ["FLASK_DEBUG"] = "1"
+config.ENABLE_UI = False  # the web chat has its own checks in test_ui.py
 try:
-    cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=5099))
+    cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=5099, ui_port=7999))
 finally:
     flask.Flask.run, sms.store.open_index, sms.store.client = real_run, real_open, real_client
     del os.environ["FLASK_DEBUG"]

@@ -3,6 +3,7 @@
 `./rag` is a wrapper that runs this module with the project's own Python.
 """
 import argparse
+import os
 import subprocess
 import sys
 
@@ -66,9 +67,35 @@ def cmd_eval(args):
         [sys.executable, str(config.ROOT / "eval" / "run.py"), *args.rest]))
 
 
+# Without all three the webhook can neither check a signature nor send a reply.
+TWILIO_SETTINGS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER")
+
+
 def cmd_serve(args):
-    """Run the Twilio webhook. Flask's dev server is fine for a studio's traffic and for
-    testing through a tunnel; put gunicorn in front of it if this ever matters."""
+    """Run the Twilio webhook when Twilio is set up, and the web chat when ENABLE_UI is on.
+    Flask's dev server is fine for a studio's traffic and for testing through a tunnel; put
+    gunicorn in front of it if this ever matters."""
+    sms_on = all(os.environ.get(name) for name in TWILIO_SETTINGS)
+    if not (sms_on or config.ENABLE_UI):
+        raise SystemExit("Nothing to serve: add the Twilio settings to .env for SMS, "
+                         "or set ENABLE_UI=true for the web chat.")
+    idx = store.open_index(store.client())
+    if config.ENABLE_UI:
+        try:
+            from . import ui  # the only code that needs Gradio, which is an optional install
+        except ModuleNotFoundError as e:
+            if e.name != "gradio":
+                raise
+            raise SystemExit("ENABLE_UI is on but Gradio is not installed. Run: "
+                             ".venv/bin/pip install -r requirements-ui.txt")
+        demo = ui.launch(idx, host=args.host, port=args.ui_port)
+        print(f"web chat   ->  http://{args.host}:{args.ui_port}")
+    else:
+        print("web chat   ->  off (set ENABLE_UI=true in .env to turn it on)")
+    if not sms_on:
+        print("SMS        ->  off (add the Twilio settings to .env to turn it on)")
+        demo.block_thread()
+        return
     from . import sms  # imported lazily so `rag ask` does not require flask installed
     print(f"POST /sms  ->  http://{args.host}:{args.port}/sms")
     if not config.TWILIO_WEBHOOK_URL:
@@ -77,8 +104,8 @@ def cmd_serve(args):
     # debug=False is passed explicitly because Flask's run() otherwise obeys FLASK_DEBUG
     # from the environment, and its debugger exposed through a tunnel can run code on this
     # machine. load_dotenv=False stops Flask reading .env on its own.
-    sms.create_app().run(host=args.host, port=args.port, threaded=True,
-                         debug=False, load_dotenv=False)
+    sms.create_app(index=idx).run(host=args.host, port=args.port, threaded=True,
+                                  debug=False, load_dotenv=False)
 
 
 def cmd_customers(args):
@@ -128,9 +155,10 @@ def main():
     # `rag eval retrieval --k 3` works without redeclaring the eval's own flags here.
     ev.add_argument("rest", nargs=argparse.REMAINDER)
     ev.set_defaults(func=cmd_eval)
-    srv = sub.add_parser("serve", help="run the Twilio SMS webhook")
+    srv = sub.add_parser("serve", help="run the Twilio SMS webhook and/or the web chat (ENABLE_UI)")
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=5000)
+    srv.add_argument("--ui-port", type=int, default=7860, help="web chat port (ENABLE_UI=true)")
     srv.set_defaults(func=cmd_serve)
     cus = sub.add_parser("customers", help="who has texted, and how much")
     cus.set_defaults(func=cmd_customers)

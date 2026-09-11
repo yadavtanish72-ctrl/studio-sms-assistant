@@ -40,9 +40,9 @@ def rrf(dense, text, k=None, top_k=None, text_weight=None, text_depth=None):
     return [dict(hits[i], rrf_score=scores[i]) for i in ranked[:top_k or config.TOP_K]]
 
 
-def retrieve(idx, question, query_vector=None, top_k=None):
+def retrieve(idx, question, query_vector=None, top_k=None, api_key=None):
     """Both arms, fused. `query_vector` lets eval reuse a cached embedding."""
-    qv = query_vector if query_vector is not None else embed.embed_one(question)
+    qv = query_vector if query_vector is not None else embed.embed_one(question, api_key=api_key)
     # Two round trips, because the server refuses to score by dense and text at once.
     dense = store.dense_search(idx, qv)
     text = store.text_search(idx, question)

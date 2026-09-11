@@ -697,3 +697,71 @@ it. The defaults in `src/config.py` are now the calibrated values.
 miss half the problem: it compares every code default against `.env.example` so the two
 cannot drift apart, and it asserts the six tuned numbers by name so they cannot drift
 *together* into something nobody measured.
+
+## 16. The web chat
+
+An optional Gradio page (`src/ui.py`), switched on with `ENABLE_UI=true` and started by
+`rag serve` next to the SMS webhook. Gradio stays out of `requirements.txt` because it adds
+about 30 packages the SMS bot doesn't need.
+
+### Who pays
+
+The page is meant to be public, and the owner shouldn't pay for strangers' messages. Visitors
+paste their own OpenRouter key, and every call for their message (the rewrite, the embedding
+and the answer) is billed to it. Two things enforce that:
+
+- `config.openrouter_key()` falls back to the owner's key only when no key was passed at all
+  (`is None`). An empty visitor key fails at OpenRouter instead of quietly spending ours.
+- `tests/test_ui.py` fakes OpenRouter, runs a two-message conversation, and checks the key on
+  every request. Dropping the hand-off at any one of the three calls fails it.
+
+A public host should not have `OPENROUTER_API_KEY` at all, so a missed hand-off becomes an
+error rather than a bill. The live check was run that way.
+
+Rejected: OpenRouter's free models. The answers would come from a model the eval never
+measured, and every visitor combined would share a limit of 50 requests a day.
+
+### Whose Pinecone
+
+The web chat searches the Pinecone index of whoever runs `rag serve`. Visitors to a public page
+would all search the owner's index, so the intended setup is that everyone runs their own copy
+with their own keys; the README walks through it.
+
+Rejected: an in-memory copy of the 26 chunks for the web chat, with vectors saved at ingest. It
+matched Pinecone on the 55 golden questions (97.8% / 100% / 0.711, and the same 8 chunks for 54
+of them), but it was taken out because the web chat should show the Pinecone pipeline this
+project is about, not a stand-in for it.
+
+`rag serve` starts the SMS webhook only when all three Twilio settings are present, so running
+just the web chat no longer starts a webhook that can't work.
+
+### Choosing the model
+
+The page has a text box for the answering model, filled in with `GEN_MODEL`. A visitor can type
+any OpenRouter model ID, since their own key pays for it. Only `GEN_MODEL` was evaluated, so the
+panel names the model behind every answer and marks the measured one. The ID's format is checked
+before any call is made, and OpenRouter's refusal of an unknown ID (HTTP 400) becomes a plain
+message. The embedding model can't change, because it has to match the index, and the rewrite
+keeps `REWRITE_MODEL`.
+
+### What's not stored
+
+Nothing from the web chat reaches `history.db`. The conversation lives in the browser tab and
+is sent back with each message, because `history.db` has no way to delete a stranger's messages.
+
+### Gradio defaults that had to be overridden
+
+Like `FLASK_DEBUG` in §13, several Gradio settings come from environment variables or from
+defaults meant for notebooks. Each is set explicitly in `ui.launch()` and checked in the test.
+
+| Setting | Why |
+|---|---|
+| `share=False` | `GRADIO_SHARE` would open a public tunnel to the machine |
+| `vibe_mode = False` | `GRADIO_VIBE_MODE` turns on an in-browser AI code editor whose routes edit the app's code |
+| `run_history=False` | on by default; saves every input, the visitor's key included, in their browser |
+| `blocked_paths=[ROOT]` | `GRADIO_ALLOWED_PATHS` could expose `.env`, and an empty `allowed_paths` doesn't override it |
+| `max_file_size=0` | the upload route accepts files even when the page has no upload button |
+| `enable_monitoring`, `mcp_server`, `ssr_mode` | off, because nothing here uses them |
+
+The file, upload and code-editor checks run against a real server. With the block removed, a
+file in the project folder downloaded with HTTP 200.

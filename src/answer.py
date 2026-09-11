@@ -89,12 +89,12 @@ class Answer:
 MAX_TOKENS = 3000
 
 
-def chat(messages, model=None, temperature=0, max_tokens=MAX_TOKENS, attempts=6):
+def chat(messages, model=None, temperature=0, max_tokens=MAX_TOKENS, attempts=6, api_key=None):
     """One OpenRouter chat call. Shared by the generator and by eval's judge model."""
     started = time.monotonic()
     for attempt in range(attempts):
         r = httpx.post(f"{config.OPENROUTER_URL}/chat/completions",
-                       headers={"Authorization": f"Bearer {config.require('OPENROUTER_API_KEY')}"},
+                       headers={"Authorization": f"Bearer {config.openrouter_key(api_key)}"},
                        json={"model": model or config.GEN_MODEL, "messages": messages,
                              "temperature": temperature, "max_tokens": max_tokens},
                        timeout=180)
@@ -149,7 +149,7 @@ def _split_sources(raw, chunks):
     return text, [chunks[n - 1]["id"] for n in dict.fromkeys(used)]  # dedupe, keep order
 
 
-def rewrite_query(question, history):
+def rewrite_query(question, history, api_key=None):
     """Build a standalone search query for a follow-up. Any failure returns the original
     question, so a broken rewrite degrades rather than breaking answers."""
     if not history:
@@ -158,22 +158,24 @@ def rewrite_query(question, history):
         out = chat([{"role": "system", "content": REWRITE_SYSTEM},
                     {"role": "user", "content": f"CONVERSATION:\n{format_history(history)}"
                                                 f"\n\nLATEST MESSAGE:\n{question}"}],
-                   model=config.REWRITE_MODEL, max_tokens=1000).text.strip().strip('"')
+                   model=config.REWRITE_MODEL, max_tokens=1000,
+                   api_key=api_key).text.strip().strip('"')
     except Exception:
         return question
     # A rewrite that came back empty, or as a paragraph, is not a search query.
     return out if out and len(out) <= 300 else question
 
 
-def answer(idx, question, query_vector=None, history=None):
+def answer(idx, question, query_vector=None, history=None, api_key=None, model=None):
     """Retrieve, gate, generate. `history` is background for the generator and, with
-    USE_QUERY_REWRITE on, also reshapes the search query."""
+    USE_QUERY_REWRITE on, also reshapes the search query; the web chat passes `api_key` (the
+    visitor's own) and `model` (their choice of generator)."""
     # A caller supplying query_vector has pre-embedded a specific string, so rewriting
     # would leave the dense and text arms searching for different things.
     search_query = question
     if history and config.USE_QUERY_REWRITE and query_vector is None:
-        search_query = rewrite_query(question, history)
-    r = fuse.retrieve(idx, search_query, query_vector=query_vector)
+        search_query = rewrite_query(question, history, api_key=api_key)
+    r = fuse.retrieve(idx, search_query, query_vector=query_vector, api_key=api_key)
 
     # Net 1: reads dense_top1, never the RRF score (see fuse.py). Returning here means no
     # LLM call at all.
@@ -190,7 +192,7 @@ def answer(idx, question, query_vector=None, history=None):
                     max=config.ANSWER_MAX_CHARS)},
                 {"role": "user", "content":
                     f"{prior}CONTEXT:\n{build_context(r.chunks)}\n\n"
-                    f"CUSTOMER MESSAGE:\n{question}"}])
+                    f"CUSTOMER MESSAGE:\n{question}"}], model=model, api_key=api_key)
     text, citations = _split_sources(reply.text, r.chunks)
     abstained = is_abstention(text)
     # over_cap is REPORTED, not enforced: truncating here would cut an SMS mid-word, which

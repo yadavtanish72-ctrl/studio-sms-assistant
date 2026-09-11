@@ -57,11 +57,23 @@ tuning result, not a guarantee about questions nobody has asked yet.
 
 ## Setup
 
-You need **Python 3.11 or newer**, a [Pinecone](https://www.pinecone.io) account, and an
-[OpenRouter](https://openrouter.ai/keys) API key. Both have free tiers that cover this.
+Everything runs on your own accounts: your Pinecone index holds the documents, and your
+OpenRouter key pays for the AI. It takes about ten minutes.
+
+### 1. Get two keys
+
+- **Pinecone** (free): sign up at [pinecone.io](https://www.pinecone.io), open **API Keys** in
+  the console, and create a key. The free Starter plan is enough.
+- **OpenRouter** (pay as you go): sign up at [openrouter.ai](https://openrouter.ai), add some
+  credit, and create a key at [openrouter.ai/keys](https://openrouter.ai/keys). An answer costs
+  about $0.004, so $5 covers well over a thousand questions.
+
+### 2. Install
+
+You need **Python 3.11 or newer**. Check with `python3 --version`.
 
 > Python 3.9 or 3.10 will install an old version of the Pinecone library that is missing
-> the feature this project needs, **without any error**. Check with `python3 --version`.
+> the feature this project needs, **without any error**.
 
 ```bash
 git clone <this repository's URL>
@@ -73,20 +85,29 @@ python3.11 -m venv .venv
 cp .env.example .env
 ```
 
-Open `.env` and paste in your two keys:
+### 3. Fill in `.env`
+
+Open `.env`. These two lines are empty for you to fill in: paste each key straight after its
+`=`, without quotes.
 
 ```
-PINECONE_API_KEY=...
-OPENROUTER_API_KEY=...
+PINECONE_API_KEY=
+OPENROUTER_API_KEY=
 ```
 
-Then build the index. The first run creates it, which takes a minute:
+Leave everything else as it is. The other settings are the ones the evaluation measured, and
+the Twilio lines stay empty unless you set up texting (below). `.env` is gitignored, so your keys
+never end up in a commit.
+
+### 4. Build your index
 
 ```bash
 ./rag ingest --init
 ```
 
-You should see `upserted 26 documents; index now holds 26`.
+This creates an index called `studio-kb` in your Pinecone account and loads the 26 pieces into
+it. The first run takes about a minute, and you should see
+`upserted 26 documents; index now holds 26`.
 
 ## Using it
 
@@ -152,16 +173,18 @@ a name with `./rag name +15551234567 Sara`.
 
 ### Run the tests
 
-Seven checks, all free. Only `test_fuse.py` needs the internet (it queries your index).
+Eight checks, all free. Only `test_fuse.py` needs the internet (it queries your index). Run
+`source .venv/bin/activate` first so `python3` is the project's Python.
 
 ```bash
-python3 check_corpus.py          # the 8 documents don't contradict each other
-python3 eval/audit_golden.py     # the test questions are valid against the documents
-python3 tests/test_config.py     # default settings match the measured ones
-python3 tests/test_chunk.py      # documents split into the expected 26 pieces
-python3 tests/test_fuse.py       # search merging, plus a live regression case
-python3 tests/test_sms.py        # webhook security, deduplication, rate limiting
-python3 tests/test_history.py    # conversation storage and name detection
+python3 check_corpus.py            # the 8 documents don't contradict each other
+python3 eval/audit_golden.py       # the test questions are valid against the documents
+python3 tests/test_config.py       # default settings match the measured ones
+python3 tests/test_chunk.py        # documents split into the expected 26 pieces
+python3 tests/test_fuse.py         # search merging, plus a live regression case
+python3 tests/test_sms.py          # webhook security, deduplication, rate limiting
+python3 tests/test_history.py      # conversation storage and name detection
+python3 tests/test_ui.py           # web chat: visitors' keys pay, nothing saved (skips without Gradio)
 ```
 
 ## Receiving real text messages (optional)
@@ -187,6 +210,64 @@ Before texting real customers: a Twilio trial account can only message numbers y
 verified, and US numbers generally need A2P 10DLC registration. Check Twilio's current
 requirements for your country.
 
+## Web chat (optional)
+
+A web page for chatting with the assistant in a browser. Next to each reply it shows how the
+answer was found, and you can choose which AI model writes the answers. It searches your
+Pinecone index, just like `./rag ask`.
+
+### Start it
+
+1. Install Gradio. It's kept out of the main requirements because it adds about 30 packages.
+   ```bash
+   .venv/bin/pip install -r requirements-ui.txt
+   ```
+2. In `.env`, change `ENABLE_UI=false` to `ENABLE_UI=true`.
+3. Run `./rag serve`. Among the lines it prints is the page's address:
+   ```
+   web chat   ->  http://127.0.0.1:7860
+   ```
+   Gradio also prints a tip about `share=True`. Ignore it: sharing is switched off on purpose.
+4. Open http://127.0.0.1:7860 in your browser. Press Ctrl+C in the terminal to stop it.
+
+`./rag serve` also starts the SMS webhook, but only once the three Twilio settings are filled in.
+
+### Use it
+
+- **Your OpenRouter API key.** Paste your key here. The page only uses a key pasted into it,
+  never the one in `.env`, and never saves it, so after reloading the page you paste it again.
+- **Model.** The model that writes the answers. It starts as `google/gemini-3.8-flash`, the one
+  the evaluation measured. You can type any model ID from
+  [openrouter.ai/models](https://openrouter.ai/models) instead, such as
+  `anthropic/claude-haiku-4.5` or `openai/gpt-5-mini`. Other models work, but they haven't been
+  evaluated, and you pay that model's price. Clear the box to go back to the default.
+- **Your text.** Type a question and press Enter or **Send**. The examples underneath fill it
+  in for you.
+- **What happened.** The panel beside the chat (below it on a phone) shows how each answer was
+  found: the model, what it searched for (a follow-up is rewritten first), how close the best
+  match was, whether it answered or refused, the sources, and how many texts the reply would
+  take as an SMS.
+- **New conversation.** Clears the chat. The conversation only lives in the page, so reloading
+  clears it too.
+
+Only the answer-writing model changes. Search always uses the embedding model the index was
+built with, and follow-ups are rewritten by `REWRITE_MODEL` from `.env`.
+
+When something goes wrong, a message pops up saying what: OpenRouter didn't accept the key, the
+key has no credit, OpenRouter doesn't recognise the model ID, or the model stopped before
+finishing its answer.
+
+### Running it for others
+
+**It's meant to run on your own machine.** To let someone else try it, send them this README so
+they can run their own copy with their own keys. If you put it online instead, every visitor's
+search runs on your Pinecone index, though each visitor's own key still pays for the AI. If you
+do:
+
+- Use a host that gives you HTTPS, since visitors are sending a key.
+- Don't give the host your OpenRouter key. The web chat never needs it, so a bug can't bill you.
+- Start it with `./rag serve --host 0.0.0.0` so it accepts outside connections.
+
 ## Project layout
 
 ```
@@ -201,6 +282,7 @@ src/
   history.py          stores conversations in SQLite
   sms.py              the Twilio webhook
   cli.py              the ./rag commands
+  ui.py               the optional web chat
 eval/
   golden.yaml         55 single test questions
   multiturn.yaml      14 test conversations
@@ -208,6 +290,7 @@ eval/
   audit_golden.py     validates the test questions
 tests/                the regression checks
 check_corpus.py       checks the documents agree with each other
+requirements-ui.txt   the extra packages for the web chat
 PLAN.md               every design decision, with the numbers behind it
 ```
 

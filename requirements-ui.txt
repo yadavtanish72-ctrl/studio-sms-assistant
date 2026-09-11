@@ -1,0 +1,4 @@
+# Only for the optional web chat (ENABLE_UI=true). Kept apart because Gradio brings in about
+# 30 more packages; pinned for the same reasons as requirements.txt.
+-r requirements.txt
+gradio==6.27.0
