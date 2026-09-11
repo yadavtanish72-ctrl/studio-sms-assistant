@@ -1,0 +1,237 @@
+# Multi-turn evaluation set for the Northline Studio SMS assistant.
+#
+# Each entry scripts a FIXED prior conversation and then asks one final question. The
+# history is written out rather than generated live, so a run is deterministic and cheap,
+# and a failure points at the final answer rather than at some earlier turn.
+#
+# `direction` matches src/history.py: in = customer, out = the bot.
+# Fields otherwise mirror eval/golden.yaml. Validate with: python3 eval/audit_golden.py
+
+# ------------------------------------------------- followup (5): the question only makes
+# sense given the conversation. These are what query rewriting has to fix.
+
+- id: m01
+  category: followup
+  history:
+    - {direction: in,  body: "how much is a drop in class"}
+    - {direction: out, body: "A single drop-in class is $28, bookable without a membership."}
+    - {direction: in,  body: "what about the 10 pack"}
+    - {direction: out, body: "A 10-class pack is $230."}
+  question: "and how long do i have to use it"
+  expect: answerable
+  sources:
+    - pricing.md#drop-in-and-class-packs
+  reference_answer: "A 10-class pack expires six months after purchase."
+  must_include:
+    - "six months"
+  evidence:
+    - "A 10-class pack is $230 and expires six months after purchase."
+
+- id: m02
+  category: followup
+  history:
+    - {direction: in,  body: "whats on saturday morning"}
+    - {direction: out, body: "Saturday starts with Power Yoga at 7:30 AM, then Vinyasa Flow at 9:00 AM."}
+  question: "who teaches the first one"
+  expect: answerable
+  sources:
+    - schedule.md#weekly-class-schedule
+  reference_answer: "The 7:30 AM Power Yoga on Saturday is taught by Kai Reyes."
+  must_include:
+    - "Kai Reyes"
+  evidence:
+    - "| Sat | 7:30 AM  | Power Yoga        | Kai Reyes        | 3 | 75 |"
+
+- id: m03
+  category: followup
+  history:
+    - {direction: in,  body: "tell me about the 49 dollar thing"}
+    - {direction: out, body: "The intro offer is $49 for two weeks of unlimited classes."}
+  question: "can i pause it if i get sick"
+  expect: answerable
+  sources:
+    - intro-offer.md#terms-and-restrictions
+  reference_answer: "No, intro-offer clients cannot freeze the two-week window except with a documented medical exception."
+  must_include:
+    - "documented medical exception"
+  evidence:
+    - "Intro-offer clients cannot freeze or pause the two-week window for any reason other than a documented medical exception."
+
+- id: m04
+  category: followup
+  history:
+    - {direction: in,  body: "what memberships do u have"}
+    - {direction: out, body: "There are three monthly memberships: Essential, Plus and Unlimited."}
+  question: "whats the cheapest one"
+  expect: answerable
+  sources:
+    - pricing.md#membership-tiers
+  reference_answer: "Essential is the cheapest at $89 per month, and it includes 8 classes a month."
+  must_include:
+    - "$89"
+  evidence:
+    - "Essential is $89 per month and includes 8 classes per month."
+
+- id: m05
+  category: followup
+  history:
+    - {direction: in,  body: "im booked into barre on thursday"}
+    - {direction: out, body: "Grip socks are required for Barre Basics, and you will not be allowed to participate without them."}
+  question: "how much are they"
+  expect: answerable
+  sources:
+    - what-to-bring.md#grip-socks
+  reference_answer: "Grip socks are $18 at the front desk, in standard adult sizes."
+  must_include:
+    - "$18"
+  evidence:
+    - "Grip socks are sold at the front desk for $18 in standard adult sizes."
+
+# ------------------------------------------------- topic_change (3): a self-contained
+# question that happens to follow an unrelated conversation. The earlier topic must not
+# drag retrieval off course.
+
+- id: m06
+  category: topic_change
+  history:
+    - {direction: in,  body: "how much is a drop in class"}
+    - {direction: out, body: "A single drop-in class is $28, bookable without a membership."}
+    - {direction: in,  body: "what about the 10 pack"}
+    - {direction: out, body: "A 10-class pack is $230 and expires six months after purchase."}
+  question: "do you have parking"
+  expect: answerable
+  sources:
+    - logistics.md#parking
+  reference_answer: "Yes, there is a free lot behind the building with 14 spaces, first-come-first-served."
+  must_include:
+    - "14 spaces"
+  evidence:
+    - "Northline Studio has a free lot behind the building with 14 spaces, available first-come-first-served and entered from the alley off Bell Street."
+
+- id: m07
+  category: topic_change
+  history:
+    - {direction: in,  body: "whats on saturday"}
+    - {direction: out, body: "Saturday has five classes, starting with Power Yoga at 7:30 AM."}
+  question: "whats ur address"
+  expect: answerable
+  sources:
+    - logistics.md#getting-in-and-arrival
+  reference_answer: "Northline Studio is at 1420 Northline Avenue."
+  must_include:
+    - "1420 Northline Avenue"
+  evidence:
+    - "Northline Studio is at 1420 Northline Avenue."
+
+- id: m08
+  category: topic_change
+  history:
+    - {direction: in,  body: "whats the cancellation policy"}
+    - {direction: out, body: "Northline requires at least 12 hours notice to cancel a booked class."}
+  question: "do i need to bring my own mat"
+  expect: answerable
+  sources:
+    - what-to-bring.md#mats-and-equipment-rental
+  reference_answer: "No, mats are available to borrow at every class. It is free for members and intro clients, and $3 per class for drop-in and class-pack clients."
+  must_include:
+    - "Mats are available to borrow at every class"
+  evidence:
+    - "Mats are available to borrow at every class."
+
+# ------------------------------------------------- out_of_scope (2): mid-conversation
+# questions the corpus does not answer. A conversation in progress must not make an
+# unanswerable question look answerable.
+
+- id: m09
+  category: out_of_scope
+  history:
+    - {direction: in,  body: "how much is a drop in class"}
+    - {direction: out, body: "A single drop-in class is $28, bookable without a membership."}
+  question: "is there a sauna"
+  expect: abstain
+  sources: []
+  reference_answer: ""
+  must_include: []
+  evidence: []
+
+- id: m10
+  category: out_of_scope
+  history:
+    - {direction: in,  body: "whats on saturday"}
+    - {direction: out, body: "Saturday has five classes, starting with Power Yoga at 7:30 AM."}
+  question: "can i book the 9am for my daughter shes 14"
+  expect: abstain
+  sources: []
+  reference_answer: ""
+  must_include: []
+  evidence: []
+
+# ------------------------------------------------- false_claim (2): the CUSTOMER asserts
+# something the corpus contradicts. The bot must correct it from CONTEXT rather than going
+# along with it to be agreeable.
+
+- id: m11
+  category: false_claim
+  history:
+    - {direction: in,  body: "how much for one class"}
+    - {direction: out, body: "A single drop-in class at Northline Studio is $28, bookable without a membership."}
+  question: "wait i thought u said it was 15"
+  expect: answerable
+  sources:
+    - pricing.md#drop-in-and-class-packs
+  reference_answer: "A single drop-in class is $28, not $15."
+  must_include:
+    - "$28"
+  evidence:
+    - "A single drop-in class at Northline Studio is $28, bookable without a membership."
+
+- id: m14
+  category: false_claim
+  history:
+    - {direction: in,  body: "thinking of booking friday"}
+    - {direction: out, body: "Friday has Sunrise Flow at 6:00 AM, Strength Circuit at 12:10 PM and Power Yoga at 5:30 PM."}
+  question: "and if i dont show up thats free right, i read that somewhere"
+  expect: answerable
+  sources:
+    - policies.md#no-shows
+  reference_answer: "No, a no-show carries a $15 fee charged to the card on file, and you also lose the class credit or allotment."
+  must_include:
+    - "$15"
+  evidence:
+    - "In addition, every no-show carries a $15 fee charged to the card on file."
+
+# ------------------------------------------------- false_history (2): the BOT's own
+# earlier reply contains something the corpus contradicts. History is context, never
+# evidence, so a wrong fact must not survive just because it appears earlier in the thread.
+
+- id: m12
+  category: false_history
+  history:
+    - {direction: in,  body: "hows the intro offer work"}
+    - {direction: out, body: "The intro offer is $49 for four weeks of unlimited classes, starting the day you buy it."}
+  question: "so four weeks from the day i pay yeah"
+  expect: answerable
+  sources:
+    - intro-offer.md#what-you-get
+  reference_answer: "It is two weeks, not four, and the window starts on the date of your first booked class rather than the date you purchase it."
+  must_include:
+    - "two weeks"
+    - "not the date you purchase it"
+  evidence:
+    - "The Northline intro offer is $49 for two weeks of unlimited classes."
+    - "The two-week window starts on the date of your first booked class, not the date you purchase it, so buying early does not shorten the offer."
+
+- id: m13
+  category: false_history
+  history:
+    - {direction: in,  body: "whats the earliest class saturday"}
+    - {direction: out, body: "On Saturday the first class of the day is Vinyasa Flow at 9:00 AM."}
+  question: "so 9am is the earliest i can get in on a saturday"
+  expect: answerable
+  sources:
+    - schedule.md#weekly-class-schedule
+  reference_answer: "Saturday actually starts earlier than that: Power Yoga at 7:30 AM is the first class."
+  must_include:
+    - "7:30 AM"
+  evidence:
+    - "| Sat | 7:30 AM  | Power Yoga        | Kai Reyes        | 3 | 75 |"
